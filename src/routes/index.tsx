@@ -21,7 +21,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const vacia = { materia: "", seccion: "", docente: "", aula: AULAS[0], dia: "Lunes", hora_inicio: "08:00", hora_fin: "10:00" };
+const vacia = { materia: "", seccion: "", docente: "", aula: AULAS[0]!, dia: "Lunes", hora_inicio: "08:00", hora_fin: "10:00" };
 
 function descargar(nombre: string, contenido: string, tipo: string) {
   const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
@@ -46,8 +46,8 @@ function Index() {
 
   const agregar = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.materia || !form.docente) return toast.error("Completá materia y docente");
-    if (toMin(form.hora_fin) <= toMin(form.hora_inicio)) return toast.error("La hora de fin debe ser posterior al inicio");
+    if (!form.materia || !form.docente) { toast.error("Completá materia y docente"); return; }
+    if (toMin(form.hora_fin) <= toMin(form.hora_inicio)) { toast.error("La hora de fin debe ser posterior al inicio"); return; }
     setClases((c) => [...c, { ...form, id: crypto.randomUUID() }]);
     setForm({ ...vacia, dia: form.dia });
     toast.success(`${form.materia} agregada`);
@@ -55,11 +55,11 @@ function Index() {
 
   const resolver = () => {
     const r = resolverChoques(clases);
-    const cambiados = new Set(r.clases.filter((c, i) => c.aula !== clases[i].aula).map((c) => c.id));
+    const cambiados = new Set(r.clases.filter((c, i) => c.aula !== clases[i]?.aula).map((c) => c.id));
     setClases(r.clases);
     setResueltos(cambiados);
     setTimeout(() => setResueltos(new Set()), 2600);
-    if (!r.log.length) return toast.info("No hay choques de aula para resolver");
+    if (!r.log.length) { toast.info("No hay choques de aula para resolver"); return; }
     setLog((l) => [...r.log, ...l]);
     r.log.forEach((m) => toast.success(m));
     const restDoc = [...detectarChoques(r.clases).values()].flat().some((c) => c.tipo === "docente");

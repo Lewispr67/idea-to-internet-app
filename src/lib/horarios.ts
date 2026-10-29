@@ -15,7 +15,7 @@ export type Clase = {
 export type Choque = { tipo: "aula" | "docente"; con: string; detalle: string };
 
 export const toMin = (h: string) => {
-  const [a, b] = h.split(":").map(Number);
+  const [a = 0, b = 0] = h.split(":").map(Number);
   return a * 60 + b;
 };
 
@@ -29,7 +29,7 @@ export function detectarChoques(clases: Clase[]): Map<string, Choque[]> {
   const add = (id: string, c: Choque) => res.set(id, [...(res.get(id) ?? []), c]);
   for (let i = 0; i < clases.length; i++) {
     for (let j = i + 1; j < clases.length; j++) {
-      const a = clases[i], b = clases[j];
+      const a = clases[i]!, b = clases[j]!;
       if (!seSolapan(a, b)) continue;
       if (a.aula.trim().toLowerCase() === b.aula.trim().toLowerCase()) {
         add(a.id, { tipo: "aula", con: b.id, detalle: `${a.aula} ocupada por ${b.materia} (${b.seccion})` });
@@ -57,7 +57,7 @@ export function resolverChoques(clases: Clase[], catalogo = AULAS) {
   const out = clases.map((c) => ({ ...c }));
   const log: string[] = [];
   for (let i = 0; i < out.length; i++) {
-    const c = out[i];
+    const c = out[i]!;
     const choca = out.some((o, j) => j < i && o.aula === c.aula && seSolapan(o, c));
     if (!choca) continue;
     const libre = aulaLibre(c, out, catalogo);
