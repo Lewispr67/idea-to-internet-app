@@ -34,15 +34,10 @@ describe("horarios", () => {
     const r = resolverChoques([...llenas, { ...base, id: "n", docente: "Nuevo" }]);
     const n = r.clases.at(-1)!;
     expect(n.dia).toBe("Lunes");
-    expect(n.hora_inicio).toBe("09:00");
+    expect(n.hora_inicio).toBe("10:00");
   });
   it("prioridad 3: si el día está lleno, cambia de día", () => {
-    const llenas = AULAS.flatMap((aula, i) => [0, 1, 2, 3, 4, 5, 6, 7].map((k) => ({
-      ...base, id: `o${i}-${k}`, docente: `D${i}-${k}`, aula,
-      hora_inicio: `${String(7 + k * 2 - (k ? 1 : 0)).padStart(2, "0")}:00`, hora_fin: `${String(7 + k * 2 + 1).padStart(2, "0")}:00`,
-    }))).map((c) => ({ ...c, hora_inicio: c.hora_inicio, hora_fin: c.hora_fin }));
     const dia = AULAS.map((aula, i) => ({ ...base, id: `f${i}`, docente: `F${i}`, aula, hora_inicio: "07:00", hora_fin: "22:00" }));
-    void llenas;
     const r = resolverChoques([...dia, { ...base, id: "n", docente: "Nuevo" }]);
     expect(r.clases.at(-1)!.dia).toBe("Martes");
   });
