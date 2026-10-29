@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, CalendarDays, CheckCircle2, Database, FileJson, FileSpreadsheet,
-  List, Plus, Trash2, Zap,
+  GraduationCap, List, Pencil, Plus, Trash2, UserCog, Users, X, Zap,
 } from "lucide-react";
 import {
-  AULAS, DATOS_PRUEBA, DIAS, detectarChoques, resolverChoques, toCSV, toMin, type Clase,
+  AULAS, DATOS_PRUEBA, DIAS, detectarChoques, moverADia, resolverChoques, type Pendiente, toCSV, toMin, type Clase,
 } from "@/lib/horarios";
 
 export const Route = createFileRoute("/")({
@@ -30,8 +30,16 @@ function descargar(nombre: string, contenido: string, tipo: string) {
   URL.revokeObjectURL(url);
 }
 
+type Rol = "profesor" | "alumno" | null;
+const claveMS = (c: { materia: string; seccion: string }) => `${c.materia}|||${c.seccion}`;
+
 function Index() {
-  const [clases, setClases] = useState<Clase[]>([]);
+  const [rol, setRol] = useState<Rol>(null);
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [eligiendo, setEligiendo] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [pendientes, setPendientes] = useState<Pendiente[]>([]);
+  const [clases, setClases] = useState<Clase[]>(() => DATOS_PRUEBA.map((c) => ({ ...c })));
   const [form, setForm] = useState(vacia);
   const [vista, setVista] = useState<"tabla" | "calendario">("tabla");
   const [log, setLog] = useState<string[]>([]);
@@ -48,23 +56,56 @@ function Index() {
     e.preventDefault();
     if (!form.materia || !form.docente) { toast.error("Completá materia y docente"); return; }
     if (toMin(form.hora_fin) <= toMin(form.hora_inicio)) { toast.error("La hora de fin debe ser posterior al inicio"); return; }
-    setClases((c) => [...c, { ...form, id: crypto.randomUUID() }]);
+    if (editId) {
+      setClases((l) => l.map((c) => (c.id === editId ? { ...form, id: editId } : c)));
+      setEditId(null);
+      toast.success(`${form.materia} actualizada`);
+    } else {
+      setClases((c) => [...c, { ...form, id: crypto.randomUUID() }]);
+      toast.success(`${form.materia} agregada`);
+    }
     setForm({ ...vacia, dia: form.dia });
-    toast.success(`${form.materia} agregada`);
   };
 
   const resolver = () => {
     const r = resolverChoques(clases);
-    const cambiados = new Set(r.clases.filter((c, i) => c.aula !== clases[i]?.aula).map((c) => c.id));
     setClases(r.clases);
-    setResueltos(cambiados);
+    setResueltos(r.cambiados);
     setTimeout(() => setResueltos(new Set()), 2600);
-    if (!r.log.length) { toast.info("No hay choques de aula para resolver"); return; }
+    setPendientes(r.pendientes);
+    if (!r.log.length && !r.pendientes.length) { toast.info("No hay choques para resolver"); return; }
     setLog((l) => [...r.log, ...l]);
     r.log.forEach((m) => toast.success(m));
-    const restDoc = [...detectarChoques(r.clases).values()].flat().some((c) => c.tipo === "docente");
-    if (restDoc) toast.warning("Los choques de docente requieren cambiar horario o docente manualmente");
   };
+
+  const elegirDia = (dia: string) => {
+    const p = pendientes[0];
+    if (!p) return;
+    const m = moverADia(clases, p.id, dia);
+    setClases(m.clases);
+    const msg = `${p.materia}: movida manualmente de ${p.dia} a ${dia}${m.clase ? ` ${m.clase.hora_inicio}-${m.clase.hora_fin} (${m.clase.aula})` : ""}`;
+    setLog((l) => [msg, ...l]);
+    if (m.ok) { toast.success(msg); setResueltos(new Set([p.id])); setTimeout(() => setResueltos(new Set()), 2600); }
+    else toast.warning(`${p.materia} sigue con choque en ${dia}`);
+    setPendientes((l) => l.slice(1));
+  };
+
+  const editar = (c: Clase) => {
+    setEditId(c.id);
+    setForm({ materia: c.materia, seccion: c.seccion, docente: c.docente, aula: c.aula, dia: c.dia, hora_inicio: c.hora_inicio, hora_fin: c.hora_fin });
+  };
+
+  const opciones = useMemo(
+    () => [...new Map(clases.map((c) => [claveMS(c), c])).values()].sort((a, b) => claveMS(a).localeCompare(claveMS(b))),
+    [clases],
+  );
+  const esProf = rol === "profesor";
+  const visibles = esProf ? clases : clases.filter((c) => seleccion.has(claveMS(c)));
+
+  if (!rol) return <SelectorRol onElegir={(r) => { setRol(r); if (r === "alumno") setEligiendo(true); }} />;
+  if (rol === "alumno" && eligiendo)
+    return <SelectorMaterias opciones={opciones} seleccion={seleccion} setSeleccion={setSeleccion}
+      onListo={() => setEligiendo(false)} onVolver={() => setRol(null)} />;
 
   return (
     <div className="min-h-screen">
@@ -74,36 +115,51 @@ function Index() {
             <p className="font-mono text-xs uppercase tracking-widest text-accent">hack.exe · Reto 07</p>
             <h1 className="font-mono text-2xl font-bold md:text-3xl">Gestor de Horarios - FIUNA</h1>
           </div>
-          <div className="flex gap-3">
-            <Stat label="Clases" value={clases.length} />
-            <Stat label="Conflictos activos" value={totalConflictos} danger={totalConflictos > 0} />
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-semibold">
+              {esProf ? <UserCog className="h-3.5 w-3.5" /> : <GraduationCap className="h-3.5 w-3.5" />}
+              {esProf ? "Profesor / Coordinación" : "Alumno · solo consulta"}
+            </span>
+            {!esProf && (
+              <button onClick={() => setEligiendo(true)} className="rounded-md border border-primary-foreground/30 px-3 py-1.5 text-xs font-medium hover:bg-primary-foreground/10">Modificar materias</button>
+            )}
+            <button onClick={() => { setRol(null); setEditId(null); }} className="inline-flex items-center gap-1.5 rounded-md border border-primary-foreground/30 px-3 py-1.5 text-xs font-medium hover:bg-primary-foreground/10">
+              <Users className="h-3.5 w-3.5" /> Cambiar de rol
+            </button>
+            <Stat label="Clases" value={visibles.length} />
+            {esProf && <Stat label="Conflictos activos" value={totalConflictos} danger={totalConflictos > 0} />}
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 px-6 py-6">
         <div className="flex flex-wrap gap-2">
-          <Btn onClick={() => { setClases(DATOS_PRUEBA.map((c) => ({ ...c }))); setLog([]); toast("10 clases de prueba cargadas"); }}>
+          {esProf && <>
+          <Btn onClick={() => { setClases(DATOS_PRUEBA.map((c) => ({ ...c }))); setLog([]); toast(`${DATOS_PRUEBA.length} clases de prueba cargadas`); }}>
             <Database className="h-4 w-4" /> Cargar datos de prueba
           </Btn>
           <button onClick={resolver} disabled={!clases.length}
             className="inline-flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground shadow-sm transition hover:brightness-95 disabled:opacity-50">
             <Zap className="h-4 w-4" /> Resolver choques automáticamente
           </button>
+          </>}
           <div className="ml-auto flex gap-2">
-            <Btn disabled={!clases.length} onClick={() => descargar("horario.csv", toCSV(clases), "text/csv;charset=utf-8")}>
+            <Btn disabled={!clases.length} onClick={() => descargar("horario.csv", toCSV(visibles), "text/csv;charset=utf-8")}>
               <FileSpreadsheet className="h-4 w-4" /> Exportar CSV
             </Btn>
-            <Btn disabled={!clases.length} onClick={() => descargar("horario.json", JSON.stringify(clases, null, 2), "application/json")}>
+            <Btn disabled={!clases.length} onClick={() => descargar("horario.json", JSON.stringify(visibles, null, 2), "application/json")}>
               <FileJson className="h-4 w-4" /> Exportar JSON
             </Btn>
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-          <aside className="space-y-6">
+        <div className={`grid gap-6 ${esProf ? "lg:grid-cols-[300px_1fr]" : ""}`}>
+          {esProf && <aside className="space-y-6">
             <form onSubmit={agregar} className="space-y-3 rounded-lg border bg-card p-4">
-              <h2 className="font-mono text-sm font-bold uppercase tracking-wide">Nueva clase</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wide">{editId ? "Editar clase" : "Nueva clase"}</h2>
+                {editId && <button type="button" onClick={() => { setEditId(null); setForm(vacia); }} className="text-xs text-muted-foreground hover:text-foreground">Cancelar</button>}
+              </div>
               <Field label="Materia"><input className={inp} value={form.materia} onChange={(e) => setForm({ ...form, materia: e.target.value })} placeholder="Cálculo 1" /></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Sección"><input className={inp} value={form.seccion} onChange={(e) => setForm({ ...form, seccion: e.target.value })} placeholder="MI" /></Field>
@@ -120,7 +176,7 @@ function Index() {
                 <Field label="Fin"><input type="time" className={inp} value={form.hora_fin} onChange={(e) => setForm({ ...form, hora_fin: e.target.value })} /></Field>
               </div>
               <button className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
-                <Plus className="h-4 w-4" /> Agregar clase
+                {editId ? <><Pencil className="h-4 w-4" /> Guardar cambios</> : <><Plus className="h-4 w-4" /> Agregar clase</>}
               </button>
             </form>
 
@@ -134,7 +190,7 @@ function Index() {
                 </ul>
               ) : <p className="text-sm text-muted-foreground">Sin cambios todavía.</p>}
             </div>
-          </aside>
+          </aside>}
 
           <section className="min-w-0 space-y-3">
             <div className="inline-flex rounded-md border bg-card p-1">
@@ -146,18 +202,18 @@ function Index() {
               ))}
             </div>
 
-            {!clases.length ? (
+            {!visibles.length ? (
               <div className="rounded-lg border border-dashed bg-card p-12 text-center text-muted-foreground">
-                No hay clases cargadas. Agregá una o cargá los datos de prueba.
+                {esProf ? "No hay clases cargadas. Agregá una o cargá los datos de prueba." : "No seleccionaste materias. Tocá «Modificar materias»."}
               </div>
             ) : vista === "tabla" ? (
               <div className="overflow-x-auto rounded-lg border bg-card">
                 <table className="w-full text-sm">
                   <thead className="bg-muted text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>{["Materia", "Sec.", "Docente", "Aula", "Día", "Horario", "Estado", ""].map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
+                    <tr>{(esProf ? ["Materia", "Sec.", "Docente", "Aula", "Día", "Horario", "Estado", ""] : ["Materia", "Sec.", "Docente", "Aula", "Día", "Horario", "Estado"]).map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {clases.map((c) => {
+                    {visibles.map((c) => {
                       const ch = choques.get(c.id);
                       return (
                         <tr key={c.id} className={`border-t transition-colors duration-700 ${ch ? "border-l-4 border-l-destructive bg-danger-soft" : resueltos.has(c.id) ? "flash-ok" : ""}`}>
@@ -181,9 +237,10 @@ function Index() {
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-success"><CheckCircle2 className="h-3.5 w-3.5" /> OK</span>
                             )}
                           </td>
-                          <td className="px-3 py-2">
+                          {esProf && <td className="whitespace-nowrap px-3 py-2">
+                            <button aria-label="Editar" onClick={() => editar(c)} className="mr-2 text-muted-foreground hover:text-primary"><Pencil className="h-4 w-4" /></button>
                             <button aria-label="Eliminar" onClick={() => setClases((l) => l.filter((x) => x.id !== c.id))} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
-                          </td>
+                          </td>}
                         </tr>
                       );
                     })}
@@ -191,11 +248,79 @@ function Index() {
                 </table>
               </div>
             ) : (
-              <Calendario clases={clases} choques={choques} />
+              <Calendario clases={visibles} choques={choques} />
             )}
           </section>
         </div>
       </main>
+      {esProf && pendientes[0] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
+          <div className="w-full max-w-md space-y-4 rounded-lg border bg-card p-6 shadow-xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+              <p className="text-sm">No fue posible asignar un aula ni un horario automáticamente en <b>{pendientes[0].dia}</b>. ¿A qué día deseas mover la clase de <b>{pendientes[0].materia}</b>?</p>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {DIAS.filter((d) => d !== pendientes[0]!.dia).map((d) => (
+                <button key={d} onClick={() => elegirDia(d)} className="rounded-md border px-3 py-2 text-sm font-medium hover:bg-primary hover:text-primary-foreground">{d}</button>
+              ))}
+            </div>
+            <button onClick={() => setPendientes((l) => l.slice(1))} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Dejar como está</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SelectorRol({ onElegir }: { onElegir: (r: "profesor" | "alumno") => void }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-primary p-6">
+      <div className="w-full max-w-lg space-y-6 text-center text-primary-foreground">
+        <div>
+          <p className="font-mono text-xs uppercase tracking-widest text-accent">Gestor de Horarios - FIUNA</p>
+          <h1 className="mt-2 font-mono text-3xl font-bold">¿Cómo deseas ingresar?</h1>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {([["profesor", "Socio / Profesor", "Administrador: crea, edita y resuelve choques", UserCog],
+             ["alumno", "Alumno", "Vista de consulta de tus materias", GraduationCap]] as const).map(([k, t, d, I]) => (
+            <button key={k} onClick={() => onElegir(k)} className="space-y-2 rounded-lg border bg-card p-6 text-card-foreground transition hover:-translate-y-0.5 hover:shadow-lg">
+              <I className="mx-auto h-8 w-8 text-primary" />
+              <div className="font-mono font-bold uppercase">{t}</div>
+              <div className="text-xs text-muted-foreground">{d}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelectorMaterias({ opciones, seleccion, setSeleccion, onListo, onVolver }: {
+  opciones: Clase[]; seleccion: Set<string>; setSeleccion: (s: Set<string>) => void; onListo: () => void; onVolver: () => void;
+}) {
+  const toggle = (k: string) => { const n = new Set(seleccion); n.has(k) ? n.delete(k) : n.add(k); setSeleccion(n); };
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted p-6">
+      <div className="w-full max-w-lg space-y-4 rounded-lg border bg-card p-6">
+        <h1 className="font-mono text-xl font-bold">Elegí tus materias y secciones</h1>
+        <div className="max-h-[50vh] space-y-1 overflow-y-auto">
+          {opciones.map((o) => {
+            const k = claveMS(o);
+            return (
+              <label key={k} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted">
+                <input type="checkbox" checked={seleccion.has(k)} onChange={() => toggle(k)} className="h-4 w-4 accent-primary" />
+                <span className="text-sm">{o.materia} - Sección {o.seccion}</span>
+              </label>
+            );
+          })}
+          {!opciones.length && <p className="text-sm text-muted-foreground">Todavía no hay clases cargadas.</p>}
+        </div>
+        <div className="flex justify-between">
+          <button onClick={onVolver} className="text-sm text-muted-foreground hover:text-foreground">← Volver</button>
+          <button onClick={onListo} disabled={!seleccion.size} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">Ver mi horario ({seleccion.size})</button>
+        </div>
+      </div>
     </div>
   );
 }
