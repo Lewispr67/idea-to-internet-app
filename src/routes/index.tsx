@@ -8,13 +8,14 @@ import {
 import {
   AULAS, DATOS_PRUEBA, DIAS, detectarChoques, moverADia, resolverChoques, type Pendiente, toCSV, toMin, type Clase,
 } from "@/lib/horarios";
+import logo from "@/assets/logo-fiuna.png.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Gestor de Horarios - FIUNA" },
+      { title: "Sistema de Gestión de Horarios - FIUNA" },
       { name: "description", content: "Cargá clases, detectá choques de aula o docente y exportá el horario en CSV o JSON." },
-      { property: "og:title", content: "Gestor de Horarios - FIUNA" },
+      { property: "og:title", content: "Sistema de Gestión de Horarios - FIUNA" },
       { property: "og:description", content: "Detección y resolución automática de choques de horario para la facultad." },
     ],
   }),
@@ -109,11 +110,11 @@ function Index() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-primary text-primary-foreground">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-6">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-widest text-accent">hack.exe · Reto 07</p>
-            <h1 className="font-mono text-2xl font-bold md:text-3xl">Gestor de Horarios - FIUNA</h1>
+      <header className="border-b-4 border-primary bg-secondary-foreground text-primary-foreground">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-5">
+          <div className="flex items-center gap-4">
+            <img src={logo.url} alt="Logo FIUNA" className="h-14 w-14 rounded-md object-cover" />
+            <h1 className="font-mono text-xl font-bold md:text-2xl">Sistema de Gestión de Horarios - FIUNA</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-semibold">
@@ -274,23 +275,41 @@ function Index() {
 }
 
 function SelectorRol({ onElegir }: { onElegir: (r: "profesor" | "alumno") => void }) {
+  const [pidiendo, setPidiendo] = useState(false);
+  const [clave, setClave] = useState("");
+  const [error, setError] = useState(false);
   return (
-    <div className="flex min-h-screen items-center justify-center bg-primary p-6">
+    <div className="flex min-h-screen items-center justify-center bg-secondary-foreground p-6">
       <div className="w-full max-w-lg space-y-6 text-center text-primary-foreground">
         <div>
-          <p className="font-mono text-xs uppercase tracking-widest text-accent">Gestor de Horarios - FIUNA</p>
+          <img src={logo.url} alt="Logo FIUNA" className="mx-auto mb-4 h-24 w-24 rounded-lg object-cover" />
+          <p className="font-mono text-xs uppercase tracking-widest text-primary-foreground/70">Sistema de Gestión de Horarios - FIUNA</p>
           <h1 className="mt-2 font-mono text-3xl font-bold">¿Cómo deseas ingresar?</h1>
         </div>
+        {pidiendo ? (
+          <form onSubmit={(e) => { e.preventDefault(); if (clave === "12345") onElegir("profesor"); else setError(true); }}
+            className="space-y-3 rounded-lg border-t-4 border-primary bg-card p-6 text-left text-card-foreground">
+            <label className="block text-sm font-semibold">Contraseña de Profesor / Coordinación</label>
+            <input type="password" autoFocus value={clave} onChange={(e) => { setClave(e.target.value); setError(false); }}
+              className="w-full rounded-md border px-3 py-2" />
+            {error && <p className="text-sm text-destructive">Contraseña incorrecta</p>}
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setPidiendo(false); setClave(""); setError(false); }} className="flex-1 rounded-md border px-3 py-2 text-sm">Volver</button>
+              <button type="submit" className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">Ingresar</button>
+            </div>
+          </form>
+        ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {([["profesor", "Socio / Profesor", "Administrador: crea, edita y resuelve choques", UserCog],
-             ["alumno", "Alumno", "Vista de consulta de tus materias", GraduationCap]] as const).map(([k, t, d, I]) => (
-            <button key={k} onClick={() => onElegir(k)} className="space-y-2 rounded-lg border bg-card p-6 text-card-foreground transition hover:-translate-y-0.5 hover:shadow-lg">
+          {([["profesor", "Profesor / Coordinación", "Acceso con contraseña: crea, edita y resuelve choques", UserCog],
+             ["alumno", "Alumno", "Acceso libre: consulta de tus materias", GraduationCap]] as const).map(([k, t, d, I]) => (
+            <button key={k} onClick={() => (k === "profesor" ? setPidiendo(true) : onElegir(k))} className="space-y-2 rounded-lg border-t-4 border-primary bg-card p-6 text-card-foreground transition hover:-translate-y-0.5 hover:shadow-lg">
               <I className="mx-auto h-8 w-8 text-primary" />
               <div className="font-mono font-bold uppercase">{t}</div>
               <div className="text-xs text-muted-foreground">{d}</div>
             </button>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
